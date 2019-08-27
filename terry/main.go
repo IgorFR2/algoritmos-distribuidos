@@ -41,29 +41,29 @@ func process(id string, token Token, neighs ...Neighbour) {
 		size := len(neighs)
 		for i := 1; i < size; i++ {
 			tk := <-in
-			fmt.Printf("From %s to %s\n", tk.Sender, id)
+			fmt.Printf("[%v] From %s to %s\n", id, tk.Sender, id)
 			tk.Sender = id
 			neighs[i].To <- tk
 		}
 		tk := <-in
-		fmt.Printf("From %s to %s\n", tk.Sender, id)
+		fmt.Printf("[%v] From %s to %s\n", id, tk.Sender, id)
 		fmt.Println("Fim!")
 	} else {
-		// Processo não iniciador
+		// Processo não iniciador. Passar token.
 		tk := <-in
-		fmt.Printf("From %s to %s\n", tk.Sender, id)
+		fmt.Printf("[%v] From %s to %s\n", id, tk.Sender, id)
 		// Se não tiver pai (""), será quem o enviou
 		for _, neigh := range neighs {
 			if pai.Id == "" {
 				pai = nmap[tk.Sender]
-				fmt.Printf("* %s é pai de %s\n", pai.Id, id)
+				fmt.Printf("[%v] %s é pai de %s\n", id, pai.Id, id)
 			}
 			// Entrega o token para o vizinho se ele não for o pai
 			if pai.Id != neigh.Id {
 				tk.Sender = id
 				neigh.To <- tk
 				tk = <-in
-				fmt.Printf("From %s to %s\n", tk.Sender, id)
+				fmt.Printf("[%v] Recebido de %s em %s\n", id, tk.Sender, id)
 			}
 		}
 		// Token volta para o pai depois de ter enviado para todos os vizinhos
