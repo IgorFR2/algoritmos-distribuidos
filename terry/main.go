@@ -1,72 +1,81 @@
-// Implementação do algoritmo de travessia de Tarry
+/* 
+Implementação do algoritmo de travessia de Tarry
+	1) Raiz recebe mensagem enviado por "init"
+	2) Processo assina o mensagem e envia para um filho e espera mensagem para enviar ao próximo
+	2.1) Processo registra como "pai" o primeiro a enviar mensagem
+	2.2) Todos vizinhos não "pai" são "filhos"
+	3) Processo envia mensagem para "pai"
+	4) Raiz encerra programa
+*/
 package main
 
 import (
 	"fmt"
 )
 
-type Token struct {
+type Mensagem struct {
 	Sender string
 }
 
-type Neighbour struct {
+type Vizinho struct {
 	Id   string
-	From chan Token
-	To   chan Token
+	From chan Mensagem
+	To   chan Mensagem
 }
 
-func redirect(in chan Token, neigh Neighbour) {
-	token := <-neigh.From
-	in <- token
+// Utilizar um unico canal de leitura para mensagens
+func redirect(in chan Mensagem, vizinho Vizinho) {
+	mensagem := <-vizinho.From
+	in <- mensagem
 }
 
-func process(id string, token Token, neighs ...Neighbour) {
-	var pai Neighbour
+func process(id string, mensagem Mensagem, vizinhos ...Vizinho) {
+	var pai Vizinho
 
 	// Redeirecionando todos os canais de entrada para um único canal "in" de entrada
-	in := make(chan Token, 1)
-	nmap := make(map[string]Neighbour)
-	for _, neigh := range neighs {
-		nmap[neigh.Id] = neigh
-		go redirect(in, neigh)
+	in := make(chan Mensagem, 1)
+	nmap := make(map[string]Vizinho)
+	for _, vizinho := range vizinhos {
+		nmap[vizinho.Id] = vizinho
+		go redirect(in, vizinho)
 	}
 
-	if token.Sender == "init" {
+	if mensagem.Sender == "init" {
 		// Processo iniciador
-		fmt.Printf("* %s é raiz.\n", id)
-		// Como iniciador não tem pai, o token terá "Init"
-		// Ao enviar para o próximo, o token terá o "id" do processo atual.
-		token.Sender = id
-		neighs[0].To <- token
-		size := len(neighs)
+		fmt.Printf("%s é o processo raiz.\n", id)
+		// Como iniciador não tem pai, o mensagem terá "Init"
+		// Ao enviar para o próximo, o mensagem terá o "id" do processo atual.
+		mensagem.Sender = id
+		vizinhos[0].To <- mensagem
+		size := len(vizinhos)
 		for i := 1; i < size; i++ {
 			tk := <-in
-			fmt.Printf("[%v] From %s to %s\n", id, tk.Sender, id)
+			fmt.Printf("[%v] Enviando de %s para %s\n", id, tk.Sender, id)
 			tk.Sender = id
-			neighs[i].To <- tk
+			vizinhos[i].To <- tk
 		}
 		tk := <-in
-		fmt.Printf("[%v] From %s to %s\n", id, tk.Sender, id)
+		fmt.Printf("[%v] Enviando de %s para %s\n", id, tk.Sender, id)
 		fmt.Println("Fim!")
 	} else {
-		// Processo não iniciador. Passar token.
+		// Processo não iniciador. Passar mensagem adiante.
 		tk := <-in
-		fmt.Printf("[%v] From %s to %s\n", id, tk.Sender, id)
+		fmt.Printf("[%v] Enviando de %s para %s\n", id, tk.Sender, id)
 		// Se não tiver pai (""), será quem o enviou
-		for _, neigh := range neighs {
+		for _, vizinho := range vizinhos {
 			if pai.Id == "" {
 				pai = nmap[tk.Sender]
 				fmt.Printf("[%v] %s é pai de %s\n", id, pai.Id, id)
 			}
-			// Entrega o token para o vizinho se ele não for o pai
-			if pai.Id != neigh.Id {
+			// Entrega o mensagem para o vizinho se ele não for o pai
+			if pai.Id != vizinho.Id {
 				tk.Sender = id
-				neigh.To <- tk
+				vizinho.To <- tk
 				tk = <-in
-				fmt.Printf("[%v] Recebido de %s em %s\n", id, tk.Sender, id)
+				fmt.Printf("[%v] Enviando de %s para %s\n", id, tk.Sender, id)
 			}
 		}
-		// Token volta para o pai depois de ter enviado para todos os vizinhos
+		// Mensagem volta para o pai depois de ter enviado para todos os vizinhos
 		tk.Sender = id
 		pai.To <- tk
 	}
@@ -75,20 +84,20 @@ func process(id string, token Token, neighs ...Neighbour) {
 
 func main() {
 
-	pW := make(chan Token, 1)
-	pS := make(chan Token, 1)
-	pR := make(chan Token, 1)
-	wP := make(chan Token, 1)
-	wS := make(chan Token, 1)
-	sP := make(chan Token, 1)
-	sW := make(chan Token, 1)
-	rQ := make(chan Token, 1)
-	rP := make(chan Token, 1)
-	qR := make(chan Token, 1)
+	pW := make(chan Mensagem, 1)
+	pS := make(chan Mensagem, 1)
+	pR := make(chan Mensagem, 1)
+	wP := make(chan Mensagem, 1)
+	wS := make(chan Mensagem, 1)
+	sP := make(chan Mensagem, 1)
+	sW := make(chan Mensagem, 1)
+	rQ := make(chan Mensagem, 1)
+	rP := make(chan Mensagem, 1)
+	qR := make(chan Mensagem, 1)
 
-	go process("W", Token{}, Neighbour{"P", pW, wP}, Neighbour{"S", sW, wS})
-	go process("S", Token{}, Neighbour{"P", pS, sP}, Neighbour{"W", wS, sW})
-	go process("R", Token{}, Neighbour{"Q", qR, rQ}, Neighbour{"P", pR, rP})
-	go process("Q", Token{}, Neighbour{"R", rQ, qR})
-	process("P", Token{"init"}, Neighbour{"W", wP, pW}, Neighbour{"S", sP, pS}, Neighbour{"R", rP, pR})
+	go process("W", Mensagem{}, Vizinho{"P", pW, wP}, Vizinho{"S", sW, wS})
+	go process("S", Mensagem{}, Vizinho{"P", pS, sP}, Vizinho{"W", wS, sW})
+	go process("R", Mensagem{}, Vizinho{"Q", qR, rQ}, Vizinho{"P", pR, rP})
+	go process("Q", Mensagem{}, Vizinho{"R", rQ, qR})
+	process("P", Mensagem{"init"}, Vizinho{"W", wP, pW}, Vizinho{"S", sP, pS}, Vizinho{"R", rP, pR})
 }
