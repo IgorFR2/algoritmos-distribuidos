@@ -45,7 +45,7 @@ func redirect(in chan Token, neigh Neighbour) {
 // Blz, aqui tem o principal: processos.
 // O processo tem vizinhos, dos quais recebe mensagens e envia.
 // Vizinho tem um pai, só envia mensagem para o pai quando mandar pra todo mundo e receber retorno. 
-func process(id string, token Token, neighs ...Neighbour) {
+func process(id string, running *sync.WaitGroup, token Token, neighs ...Neighbour) {
 	contador := 4294967295 // Esse cara vai armazenar a distancia até a raiz. MaxUint32 = 4294967295
 	// Lembrando que vizinho tem 2 canais (entrada,saida : From/To) e um nome (Id)
 	var pai Neighbour
@@ -136,9 +136,12 @@ func main() {
 	rP := make(chan Token, 1)
 	qR := make(chan Token, 1)
 
-	go process("W", Token{}, Neighbour{"P", pW, wP}, Neighbour{"S", sW, wS})
-	go process("S", Token{}, Neighbour{"P", pS, sP}, Neighbour{"W", wS, sW})
-	go process("R", Token{}, Neighbour{"Q", qR, rQ}, Neighbour{"P", pR, rP})
-	go process("Q", Token{}, Neighbour{"R", rQ, qR})
-	process("P", Token{"init",0}, Neighbour{"W", wP, pW}, Neighbour{"S", sP, pS}, Neighbour{"R", rP, pR})
+	var running sync.WaitGroup()
+	running.Add(1)
+	go process("W", &running, Token{}, Neighbour{"P", pW, wP}, Neighbour{"S", sW, wS})
+	go process("S", &running, Token{}, Neighbour{"P", pS, sP}, Neighbour{"W", wS, sW})
+	go process("R", &running, Token{}, Neighbour{"Q", qR, rQ}, Neighbour{"P", pR, rP})
+	go process("Q", &running, Token{}, Neighbour{"R", rQ, qR})
+	go process("P", &running, Token{"init",0}, Neighbour{"W", wP, pW}, Neighbour{"S", sP, pS}, Neighbour{"R", rP, pR})
+	running.Wait()
 }

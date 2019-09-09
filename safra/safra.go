@@ -20,8 +20,8 @@ import (
 	"sync"
 )
 
-func incremente(inteiro *int){
-	*inteiro++
+func incremente(inteiro *int, distancia int){
+	*inteiro += distancia
 }
 
 /*
@@ -47,43 +47,95 @@ type Neighbour struct {
 /*
 	Redirect agora irá receber os 2 canais: para token e para mensagens
 */
-func redirect(tokens chan Token, mensagem chan Mensagem, neigh Neighbour) {
+func redirect(tokens chan Token, mensagens chan Mensagem, neigh Neighbour) {
 	pacote := <-neigh.From
-	if(pacote.(type)=="Mensagem"){
-			mensagem <- pacote
+	switch pacote.(type){
+	case Mensagem:
+			mensagens <- pacote.(Mensagem)
+	case Token:
+			tokens <- pacote.(Token)
+	}
+}
+
+func safra(id string, contador *int, running *sync.WaitGroup, ativo *sync.WaitGroup, tokens chan Token, vizinhos []Neighbour, nmap map[string]Neighbour){
+	// Aguardar entrada de token
+	var pai Neighbour
+	for token := range tokens{
+		ativo.Wait()
+		if token.Sender == "init" {
+			for {
+				fmt.Printf("\t\t\t\t[%s][Safra] Iniciado.\n", id)
+				token.Sender = id
+				vizinhos[0].To <- token
+				size := len(vizinhos)
+				for i := 1; i < size; i++ {
+					token := <-tokens
+					fmt.Printf("\t\t\t\t[%v][Safra] Enviando de %s para %s\n", id, token.Sender, id)
+					token.Sender = id
+					vizinhos[i].To <- token
+				}
+				token := <-tokens
+				fmt.Printf("\t\t\t\t[%v][Safra] Enviando de %s para %s\n", id, token.Sender, id)
+				if(token.Contador == 0){
+					fmt.Println("Fim!")
+					running.Done()
+				}
+			}
 		} else {
-			token <- pacote
+			if pai.Id == "" {
+				pai = nmap[token.Sender]
+			}
+
+			fmt.Printf("\t\t\t\t[%v] Enviando de %s para %s\n", id, token.Sender, id)
+			token.Contador = token.Contador + *contador
+			token.Sender = id
+			vizinhos[0].To <- token
+			size := len(vizinhos)
+			for i := 1; i < size; i++ {
+				token := <-tokens
+				fmt.Printf("\t\t\t\t[%v][Safra] Enviando de %s para %s\n", id, token.Sender, id)
+				token.Sender = id
+				vizinhos[i].To <- token
+			}
+			token := <-tokens
+			fmt.Printf("\t\t\t\t[%v][Safra] Enviando de %s para %s\n", id, token.Sender, id)
+			pai.To <- token
 		}
+	
+	}
 }
 
 func process(id string, running *sync.WaitGroup, mensagem Mensagem, neighs ...Neighbour) {
 	contador := 99999
+	contadorMsg := 0
 	var pai Neighbour
-
+	
 	// Redeirecionando todos os canais de entrada para um único canal "in" de entrada
-	in := make(chan Mensagens, 1)  // Canal de Mensagens
+	in := make(chan Mensagem)//, 1)  // Canal de Mensagens
 	intk := make(chan Token) // Canal de Tokens do Safra
-
 	nmap := make(map[string]Neighbour) // Vizinhos []
 	for _, neigh := range neighs {
 		nmap[neigh.Id] = neigh
 		go redirect(intk, in, neigh)
 	}
-
-	msg := mensagem
-	var tk Token
-	var ativo sync.WaitGroup()
+	//msg := mensagem
+	in <- mensagem
+	//var tk Token
+	var ativo sync.WaitGroup
 /*
 ****************** LAÇO PARA FICAR ESPERANDO CASO RECEBA OUTRA MENSAGEM ***********
 */
 
-	for {
+	for msg := range in{
 
 		// Aqui vem o caso base: nó raiz.
 		/*
 			O nó raiz enviará o token quando enviar as mensagens para geral.
 		*/
+
 		if msg.Sender == "init" {
+			// Token Ativo
+			ativo.Add(1)
 				
 			fmt.Printf("* %s é raiz.\n", id)
 			// Ao enviar para o próximo, o mensagem terá o "id" do processo atual.
@@ -101,20 +153,22 @@ func process(id string, running *sync.WaitGroup, mensagem Mensagem, neighs ...Ne
 				neighs[i].To <- msg
 			}
 			
-			tk <- intk
+			// tk <- intk
 
 			running.Wait()
 
 
 
 		} else {
-			// Processo não iniciador
-			// Blz, aqui que o jogo começa:
-			msg := <-in // Processo aguardando receber mensagem
-			incremente(&msg.Distancia)
-			
 			// Mensagem recebida, processo ativo
 			ativo.Add(1)
+
+			// Processo não iniciador
+			// Blz, aqui que o jogo começa:
+			// msg := <-in // Processo aguardando receber mensagem
+			incremente(&msg.Distancia, nmap[msg.Sender].Distancia)
+			contadorMsg--
+			
 			
 			fmt.Printf("[%s] From %s to %s. (Fora) Contador: %v / Token Dist: %v\n",id, msg.Sender, id, contador, msg.Distancia)
 			// Blz, verificar se o cara tem pai.
@@ -133,34 +187,38 @@ func process(id string, running *sync.WaitGroup, mensagem Mensagem, neighs ...Ne
 					if pai.Id != neigh.Id {
 						msg.Sender = id
 						neigh.To <- msg
+						contadorMsg++
 					}
 				}
 
 			// Enviou para todos, processo passivo
 			ativo.Done()
+			go safra(id, &contadorMsg, running, &ativo , intk, neighs, nmap)
 		}	
 	}
 }
+
 		
 func main() {
 
-	pW := make(chan Token, 1)
-	pS := make(chan Token, 1)
-	pR := make(chan Token, 1)
-	wP := make(chan Token, 1)
-	wS := make(chan Token, 1)
-	sP := make(chan Token, 1)
-	sW := make(chan Token, 1)
-	rQ := make(chan Token, 1)
-	rP := make(chan Token, 1)
-	qR := make(chan Token, 1)
+	pW := make(chan interface{}, 1)
+	pS := make(chan interface{}, 1)
+	pR := make(chan interface{}, 1)
+	wP := make(chan interface{}, 1)
+	wS := make(chan interface{}, 1)
+	sP := make(chan interface{}, 1)
+	sW := make(chan interface{}, 1)
+	rQ := make(chan interface{}, 1)
+	rP := make(chan interface{}, 1)
+	qR := make(chan interface{}, 1)
 
-	var running sync.WaitGroup()
+	var running sync.WaitGroup
+
 	running.Add(1)
-	go process("W", &running, Token{}, Neighbour{"P", pW, wP}, Neighbour{"S", sW, wS})
-	go process("S", &running, Token{}, Neighbour{"P", pS, sP}, Neighbour{"W", wS, sW})
-	go process("R", &running, Token{}, Neighbour{"Q", qR, rQ}, Neighbour{"P", pR, rP})
-	go process("Q", &running, Token{}, Neighbour{"R", rQ, qR})
-	go process("P", &running, Token{"init",0}, Neighbour{"W", wP, pW}, Neighbour{"S", sP, pS}, Neighbour{"R", rP, pR})
-	ativo.Wait()
+	go process("W", &running, Mensagem{}, Neighbour{"P", 1, pW, wP}, Neighbour{"S", 1, sW, wS})
+	go process("S", &running, Mensagem{}, Neighbour{"P", 1, pS, sP}, Neighbour{"W", 1, wS, sW})
+	go process("R", &running, Mensagem{}, Neighbour{"Q", 1, qR, rQ}, Neighbour{"P", 1, pR, rP})
+	go process("Q", &running, Mensagem{}, Neighbour{"R", 1, rQ, qR})
+	go process("P", &running, Mensagem{"init",0}, Neighbour{"W", 1, wP, pW}, Neighbour{"S", 1, sP, pS}, Neighbour{"R", 1, rP, pR})
+	running.Wait()
 }

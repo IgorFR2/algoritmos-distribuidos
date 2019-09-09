@@ -13,9 +13,13 @@ Funcionamento do Algoritmo Chandy Misra:
 
 */
 package main
-import ("fmt")
-func incremente(inteiro *int){
-	*inteiro++
+import (
+	"fmt" 
+	"time"
+	"sync"
+)
+func incremente(inteiro *int, distancia int){
+	*inteiro += distancia
 }
 type Token struct {
 	Sender string
@@ -25,25 +29,28 @@ type Neighbour struct {
 	Id   string
 	From chan Token
 	To   chan Token
+	Distancia int
 }
 func redirect(in chan Token, neigh Neighbour) {
 	token := <-neigh.From
 	in <- token
 }
 
-func process(id string, token Token, neighs ...Neighbour) {
+func process(id string, running *sync.WaitGroup, token Token, neighs ...Neighbour) {
 	contador := 99999
 	var pai Neighbour
 
 	// Redeirecionando todos os canais de entrada para um único canal "in" de entrada
 	in := make(chan Token, 1)  // Unificados
+
 	
 	nmap := make(map[string]Neighbour) // Vizinhos []
 	for _, neigh := range neighs {
 		nmap[neigh.Id] = neigh
 		go redirect(in, neigh)
 	}
-	tk := token
+
+	//tk := token
 /*
 ****************** LAÇO PARA FICAR ESPERANDO CASO RECEBA OUTRA MENSAGEM ***********
 */
@@ -80,11 +87,14 @@ func process(id string, token Token, neighs ...Neighbour) {
 			// tk := <-in
 			// fmt.Printf("[%s] From %s to %s. (Raiz) Contador: %v / Token Dist: %v\n",id, tk.Sender, id, contador, tk.Distancia)
 			// fmt.Println("Fim!")
+			time.Sleep(2 * time.Second)
+			fmt.Printf("----- Fim -----")
+			running.Done()
 			} else {
 				// Processo não iniciador
 				// Blz, aqui que o jogo começa:
 				tk := <-in // Processo aguardando receber token
-				incremente(&tk.Distancia)
+				incremente(&tk.Distancia, nmap[tk.Sender].Distancia)
 				
 				
 				fmt.Printf("[%s] From %s to %s. (Fora) Contador: %v / Token Dist: %v\n",id, tk.Sender, id, contador, tk.Distancia)
@@ -116,7 +126,7 @@ func process(id string, token Token, neighs ...Neighbour) {
 }
 		
 func main() {
-
+	
 	pW := make(chan Token, 1)
 	pS := make(chan Token, 1)
 	pR := make(chan Token, 1)
@@ -127,10 +137,14 @@ func main() {
 	rQ := make(chan Token, 1)
 	rP := make(chan Token, 1)
 	qR := make(chan Token, 1)
-
-	go process("W", Token{}, Neighbour{"P", pW, wP}, Neighbour{"S", sW, wS})
-	go process("S", Token{}, Neighbour{"P", pS, sP}, Neighbour{"W", wS, sW})
-	go process("R", Token{}, Neighbour{"Q", qR, rQ}, Neighbour{"P", pR, rP})
-	go process("Q", Token{}, Neighbour{"R", rQ, qR})
-	process("P", Token{"init",0}, Neighbour{"W", wP, pW}, Neighbour{"S", sP, pS}, Neighbour{"R", rP, pR})
+	
+	var running sync.WaitGroup
+	
+	running.Add(1)
+	go process("W", &running, Token{}, Neighbour{"P", pW, wP, 1}, Neighbour{"S", sW, wS, 1})
+	go process("S", &running, Token{}, Neighbour{"P", pS, sP, 1}, Neighbour{"W", wS, sW, 1})
+	go process("R", &running, Token{}, Neighbour{"Q", qR, rQ, 1}, Neighbour{"P", pR, rP, 1})
+	go process("Q", &running, Token{}, Neighbour{"R", rQ, qR, 1})
+	go process("P", &running, Token{"init",0}, Neighbour{"W", wP, pW, 1}, Neighbour{"S", sP, pS, 1}, Neighbour{"R", rP, pR, 1})
+	running.Wait()
 }
