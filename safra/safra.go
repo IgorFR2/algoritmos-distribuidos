@@ -82,16 +82,14 @@ func safra(token Token, id string, contador *int, running *sync.WaitGroup, ativo
 		}
 		running.Done()
 	} else {
+		// ativo.Wait()
 		for token := range tokens{
 			
-			fmt.Printf("\t\t\t\tBlz, cheguei até aqui.\n")
-			//-------------------------------------------------------------------------------
 			// size := len(vizinhos)
 			if pai.Id == "" {
 				pai = nmap[token.Sender]
 				fmt.Printf("\t\t\t\t[%v][Safra] %s é pai de %s\n", id, pai.Id, id)
 			}
-			ativo.Wait()
 			for _, vizinho := range vizinhos {
 				// Entrega o mensagem para o vizinho se ele não for o pai
 				if pai.Id != vizinho.Id {
