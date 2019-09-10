@@ -32,8 +32,10 @@ type Neighbour struct {
 	Distancia int
 }
 func redirect(in chan Token, neigh Neighbour) {
-	token := <-neigh.From
-	in <- token
+	for {
+		token := <-neigh.From
+		in <- token
+	}
 }
 
 func process(id string, running *sync.WaitGroup, token Token, neighs ...Neighbour) {

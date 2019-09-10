@@ -44,12 +44,14 @@ type Neighbour struct {
 	Redirect agora irá receber os 2 canais: para token e para mensagens
 */
 func redirect(tokens chan Token, mensagens chan Mensagem, neigh Neighbour) {
-	pacote := <-neigh.From
-	switch pacote.(type){
-	case Mensagem:
-			mensagens <- pacote.(Mensagem)
-	case Token:
-			tokens <- pacote.(Token)
+	for{
+		pacote := <-neigh.From
+		switch pacote.(type){
+		case Mensagem:
+				mensagens <- pacote.(Mensagem)
+		case Token:
+				tokens <- pacote.(Token)
+		}
 	}
 }
 
@@ -66,13 +68,13 @@ func safra(token Token, id string, contador *int, running *sync.WaitGroup, ativo
 			token.Contador += *contador
 			vizinhos[0].To <- token
 			for i := 1; i < size; i++ {
-				token := <-tokens
+				token = <-tokens
 				fmt.Printf("\t\t\t\t[%v][Safra] Enviando de %s para %s\n", id, token.Sender, vizinhos[i].Id)
 				token.Sender = id
 				token.Contador += *contador
 				vizinhos[i].To <- token
 			}
-			token := <-tokens
+			token = <-tokens
 			fmt.Printf("\t\t\t\t[%v][Safra] Enviando de %s para %s\n", id, token.Sender, id)
 			token.Contador += *contador
 			if(token.Contador == 0){
@@ -101,7 +103,7 @@ func safra(token Token, id string, contador *int, running *sync.WaitGroup, ativo
 				}
 			}
 			
-			token := <-tokens
+			token = <-tokens
 			fmt.Printf("\t\t\t\t[%v][Safra] Enviando de %s para %s\n", id, token.Sender, id)
 			pai.To <- token
 		}
@@ -125,77 +127,86 @@ func process(id string, running *sync.WaitGroup, mensagem Mensagem, neighs ...Ne
 /*
 ****************** LAÇO PARA FICAR ESPERANDO CASO RECEBA OUTRA MENSAGEM ***********
 */
-	// for {
-		// Aqui vem o caso base: nó raiz.
-		/*
-			O nó raiz enviará o token quando enviar as mensagens para geral.
-		*/
-		if mensagem.Sender == "init" {
-			
-			ativo.Add(1)
-			fmt.Printf("* %s é raiz.\n", id)
-			// Ao enviar para o próximo, o mensagem terá o "id" do processo atual.
-			// mensagem.Sender = id
-			// mensagem.Distancia = 0
-			mensagem.Sender = id
-			mensagem.Distancia = 0
-			contador = 0
-			pai.Id = "init"// Colocar um pai não vazio para evitar erro
-			
-			// neighs[0].To <- mensagem
-			size := len(neighs)
-			// for i := 1; i < size; i++ {
-			for i := 0; i < size; i++ {
-				neighs[i].To <- mensagem
-			}
-			ativo.Done()
-			
-			go safra(Token{"init",0},id, &contadorMsg, running, &ativo , intk, neighs, nmap)
-			
-			for range in{
-				contadorMsg--
-			}
-			// tk <- int
+	/*
+		O nó raiz enviará o token quando enviar as mensagens para geral.
+	*/
+	if mensagem.Sender == "init" {
+		
+		ativo.Add(1)
+		fmt.Printf("* %s é raiz.\n", id)
+		// Ao enviar para o próximo, o mensagem terá o "id" do processo atual.
+		// mensagem.Sender = id
+		// mensagem.Distancia = 0
+		mensagem.Sender = id
+		mensagem.Distancia = 0
+		contador = 0
+		pai.Id = "init"// Colocar um pai não vazio para evitar erro
+		
+		// neighs[0].To <- mensagem
+		size := len(neighs)
+		// for i := 1; i < size; i++ {
+		for i := 0; i < size; i++ {
+			neighs[i].To <- mensagem
+			contador++
+		}
+		ativo.Done()
+		
+		go safra(Token{"init",0},id, &contadorMsg, running, &ativo , intk, neighs, nmap)
+		
+		for range in{
+			contadorMsg--
+		}
+		// tk <- int
 
-		} else {
-			go safra(Token{},id, &contadorMsg, running, &ativo , intk, neighs, nmap)
-			for msg := range in{
-				// Mensagem recebida, processo ativo
-				ativo.Add(1)
-	
-				// Processo não iniciador
-				// Blz, aqui que o jogo começa:
-				// msg := <-in // Processo aguardando receber mensagem
-				msg.Distancia += nmap[msg.Sender].Distancia
-				contadorMsg--
-				
-				fmt.Printf("[%s] From %s to %s. (Fora) Contador: %v / Token Dist: %v\n",id, msg.Sender, id, contador, msg.Distancia)
-				// Blz, verificar se o cara tem pai.
-				if pai.Id == "" {
-					pai = nmap[msg.Sender]
-					contador = msg.Distancia // Aqui a distancia do mensagem já ta incrementada, não tendo pai o contador ta max_int.
-					fmt.Printf("[%s] %s é pai de %s (Orfão). Contador: %v / Token Dist: %v\n", id, pai.Id, id, contador, msg.Distancia)
-					} else if contador > msg.Distancia{
-						// Se o novo cara for melhor que o pai, ele será o novo pai e atualiza contador
-						pai = nmap[msg.Sender]  // Novo pai
-						contador = msg.Distancia // Contador fica com a distancia acumulada pelo mensagem
-						fmt.Printf("[%s] %s é o novo pai de %s (Orfão). Contador: %v / Token Dist: %v\n", id, pai.Id, id, contador, msg.Distancia)
-					}
+	} else {
+		go safra(Token{},id, &contadorMsg, running, &ativo , intk, neighs, nmap)
+		for msg := range in{
+			// Mensagem recebida, processo ativo
+			ativo.Add(1)
+
+			// Processo não iniciador
+			// Blz, aqui que o jogo começa:
+			// msg := <-in // Processo aguardando receber mensagem
+			msg.Distancia += nmap[msg.Sender].Distancia
+			contadorMsg--
+			
+			fmt.Printf("[%s] From %s to %s. (Fora) Contador: %v / Token Dist: %v\n",id, msg.Sender, id, contador, msg.Distancia)
+			// Blz, verificar se o cara tem pai.
+			if pai.Id == "" {
+				pai = nmap[msg.Sender]
+				contador = msg.Distancia // Aqui a distancia do mensagem já ta incrementada, não tendo pai o contador ta max_int.
+				fmt.Printf("[%s] %s é pai de %s (Orfão). Contador: %v / Token Dist: %v\n", id, pai.Id, id, contador, msg.Distancia)
 				for _, neigh := range neighs {
-						// Entrega o mensagem para o vizinho, se ele não for o pai
-						if pai.Id != neigh.Id {
-							msg.Sender = id
-							// contadorMsg++ ??
-							neigh.To <- msg
-							contadorMsg++
-						}
+					// Entrega o mensagem para o vizinho, se ele não for o pai
+					if pai.Id != neigh.Id {
+						msg.Sender = id
+						neigh.To <- msg
+						contadorMsg++
 					}
-	
-				// Enviou para todos, processo passivo
-				ativo.Done()
+				}
+
+			} 
+			if contador > msg.Distancia{
+				// Se o novo cara for melhor que o pai, ele será o novo pai e atualiza contador
+				pai = nmap[msg.Sender]  // Novo pai
+				contador = msg.Distancia // Contador fica com a distancia acumulada pelo mensagem
+				fmt.Printf("[%s] %s é o novo pai de %s (Orfão). Contador: %v / Token Dist: %v\n", id, pai.Id, id, contador, msg.Distancia)
+				for _, neigh := range neighs {
+					// Entrega o mensagem para o vizinho, se ele não for o pai
+					if pai.Id != neigh.Id {
+						msg.Sender = id
+						// contadorMsg++ ??
+						neigh.To <- msg
+						contadorMsg++
+					}
+				}
+
 			}
-		}	
-	//}
+
+			// Enviou para todos, processo passivo
+			ativo.Done()
+		}
+	}	
 }
 
 		
