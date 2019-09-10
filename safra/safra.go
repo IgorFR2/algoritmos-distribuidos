@@ -20,10 +20,6 @@ import (
 	"sync"
 )
 
-func incremente(inteiro *int, distancia int){
-	*inteiro += distancia
-}
-
 /*
 	Apenas Safra enviará Token. 
 	Chandy-Misra enviará Mensagens.
@@ -57,55 +53,60 @@ func redirect(tokens chan Token, mensagens chan Mensagem, neigh Neighbour) {
 	}
 }
 
-func safra(id string, contador *int, running *sync.WaitGroup, ativo *sync.WaitGroup, tokens chan Token, vizinhos []Neighbour, nmap map[string]Neighbour){
+func safra(token Token, id string, contador *int, running *sync.WaitGroup, ativo *sync.WaitGroup, tokens chan Token, vizinhos []Neighbour, nmap map[string]Neighbour){
 	// Aguardar entrada de token
 	var pai Neighbour
-	for token := range tokens{
-		if token.Sender == "init" {
-			for {
-				fmt.Printf("\t\t\t\t[%s][Safra] Iniciado.\n", id)
-				token.Sender = id
-				ativo.Wait()
-
-				vizinhos[0].To <- token
-				size := len(vizinhos)
-				for i := 1; i < size; i++ {
-					token := <-tokens
-					fmt.Printf("\t\t\t\t[%v][Safra] Enviando de %s para %s\n", id, token.Sender, id)
-					token.Sender = id
-					ativo.Wait()
-
-					vizinhos[i].To <- token
-				}
-				token := <-tokens
-				fmt.Printf("\t\t\t\t[%v][Safra] Enviando de %s para %s\n", id, token.Sender, id)
-				if(token.Contador == 0){
-					fmt.Println("Fim!")
-					break
-				}
-			}
-		} else {
-			if pai.Id == "" {
-				pai = nmap[token.Sender]
-			}
-
-			fmt.Printf("\t\t\t\t[%v] Enviando de %s para %s\n", id, token.Sender, id)
-			token.Contador = token.Contador + *contador
+	size := len(vizinhos)
+	if token.Sender == "init" {
+		for {
+			fmt.Printf("\t\t\t\t[%s][Safra] Iniciado.\n", id)
+			token.Contador = 0
 			token.Sender = id
+			// ativo.Wait()
+			token.Contador += *contador
 			vizinhos[0].To <- token
-			size := len(vizinhos)
 			for i := 1; i < size; i++ {
 				token := <-tokens
-				fmt.Printf("\t\t\t\t[%v][Safra] Enviando de %s para %s\n", id, token.Sender, id)
+				fmt.Printf("\t\t\t\t[%v][Safra] Enviando de %s para %s\n", id, token.Sender, vizinhos[i].Id)
 				token.Sender = id
+				token.Contador += *contador
 				vizinhos[i].To <- token
 			}
 			token := <-tokens
 			fmt.Printf("\t\t\t\t[%v][Safra] Enviando de %s para %s\n", id, token.Sender, id)
-			pai.To <- token
+			token.Contador += *contador
+			if(token.Contador == 0){
+				fmt.Println("Fim!")
+				break
+			}
 		}
 		running.Done()
-
+	} else {
+		for token := range tokens{
+			
+			fmt.Printf("\t\t\t\tBlz, cheguei até aqui.\n")
+			//-------------------------------------------------------------------------------
+			// size := len(vizinhos)
+			if pai.Id == "" {
+				pai = nmap[token.Sender]
+				fmt.Printf("\t\t\t\t[%v][Safra] %s é pai de %s\n", id, pai.Id, id)
+			}
+			ativo.Wait()
+			for _, vizinho := range vizinhos {
+				// Entrega o mensagem para o vizinho se ele não for o pai
+				if pai.Id != vizinho.Id {
+					fmt.Printf("\t\t\t\t[%v][Safra] Enviando de %s para %s\n", id, token.Sender, id)
+					token.Sender = id
+					token.Contador += *contador
+					vizinho.To <- token
+					// token = <-tokens
+				}
+			}
+			
+			token := <-tokens
+			fmt.Printf("\t\t\t\t[%v][Safra] Enviando de %s para %s\n", id, token.Sender, id)
+			pai.To <- token
+		}
 	}
 }
 
@@ -122,9 +123,6 @@ func process(id string, running *sync.WaitGroup, mensagem Mensagem, neighs ...Ne
 		nmap[neigh.Id] = neigh
 		go redirect(intk, in, neigh)
 	}
-	//msg := mensagem
-	// in <- mensagem
-	//var tk Token
 	var ativo sync.WaitGroup
 /*
 ****************** LAÇO PARA FICAR ESPERANDO CASO RECEBA OUTRA MENSAGEM ***********
@@ -135,8 +133,7 @@ func process(id string, running *sync.WaitGroup, mensagem Mensagem, neighs ...Ne
 			O nó raiz enviará o token quando enviar as mensagens para geral.
 		*/
 		if mensagem.Sender == "init" {
-
-			// Token Ativo
+			
 			ativo.Add(1)
 			fmt.Printf("* %s é raiz.\n", id)
 			// Ao enviar para o próximo, o mensagem terá o "id" do processo atual.
@@ -154,7 +151,8 @@ func process(id string, running *sync.WaitGroup, mensagem Mensagem, neighs ...Ne
 				neighs[i].To <- mensagem
 			}
 			ativo.Done()
-			go safra(id, &contadorMsg, running, &ativo , intk, neighs, nmap)
+			
+			go safra(Token{"init",0},id, &contadorMsg, running, &ativo , intk, neighs, nmap)
 			
 			for range in{
 				contadorMsg--
@@ -162,28 +160,28 @@ func process(id string, running *sync.WaitGroup, mensagem Mensagem, neighs ...Ne
 			// tk <- int
 
 		} else {
-			go safra(id, &contadorMsg, running, &ativo , intk, neighs, nmap)
-			for mgs := range in{
+			go safra(Token{},id, &contadorMsg, running, &ativo , intk, neighs, nmap)
+			for msg := range in{
 				// Mensagem recebida, processo ativo
 				ativo.Add(1)
 	
 				// Processo não iniciador
 				// Blz, aqui que o jogo começa:
 				// msg := <-in // Processo aguardando receber mensagem
-				incremente(&msg.Distancia, nmap[msg.Sender].Distancia)
+				msg.Distancia += nmap[msg.Sender].Distancia
 				contadorMsg--
 				
 				fmt.Printf("[%s] From %s to %s. (Fora) Contador: %v / Token Dist: %v\n",id, msg.Sender, id, contador, msg.Distancia)
 				// Blz, verificar se o cara tem pai.
 				if pai.Id == "" {
 					pai = nmap[msg.Sender]
-					fmt.Printf("[%s] %s é pai de %s (Orfão). Contador: %v / Token Dist: %v\n", id, pai.Id, id, contador, msg.Distancia)
 					contador = msg.Distancia // Aqui a distancia do mensagem já ta incrementada, não tendo pai o contador ta max_int.
+					fmt.Printf("[%s] %s é pai de %s (Orfão). Contador: %v / Token Dist: %v\n", id, pai.Id, id, contador, msg.Distancia)
 					} else if contador > msg.Distancia{
 						// Se o novo cara for melhor que o pai, ele será o novo pai e atualiza contador
 						pai = nmap[msg.Sender]  // Novo pai
-						fmt.Printf("[%s] %s é o novo pai de %s (Orfão). Contador: %v / Token Dist: %v\n", id, pai.Id, id, contador, msg.Distancia)
 						contador = msg.Distancia // Contador fica com a distancia acumulada pelo mensagem
+						fmt.Printf("[%s] %s é o novo pai de %s (Orfão). Contador: %v / Token Dist: %v\n", id, pai.Id, id, contador, msg.Distancia)
 					}
 				for _, neigh := range neighs {
 						// Entrega o mensagem para o vizinho, se ele não for o pai
@@ -199,7 +197,7 @@ func process(id string, running *sync.WaitGroup, mensagem Mensagem, neighs ...Ne
 				ativo.Done()
 			}
 		}	
-	}
+	//}
 }
 
 		
