@@ -53,7 +53,7 @@
 				msg.Eleito = id
 			}
 			for j := 0; j < 2; j++ {
-			   fmt.Printf("\n[DEBUGGER MANUAL] \n[%v] p.eleito:'%v' msg.Eleito:'%v'\n    Processo:'%v' Msg:'%v'\n    Sender:'%v'\n\n", id, eleito, msg.Eleito, valor, msg.Valor, msg.Sender)
+			   fmt.Printf("\n[Nova rodada] \n[%v]\tp.eleito:'%v' msg.Eleito:'%v'\n\tp.valor:'%v' Msg.Valor:'%v'\n\tRecebido por ultimo de:'%v'\n\n", id, eleito, msg.Eleito, valor, msg.Valor, msg.Sender)
 				msg.Sender = id
 				vizinhos[0].To <- msg // Envia para 1o vizinho
 				for i := 1; i < size; i++ {
